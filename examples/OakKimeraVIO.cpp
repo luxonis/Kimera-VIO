@@ -13,29 +13,26 @@
  * @author Luca Carlone
  */
 
-#include <future>
-#include <memory>
-#include <utility>
-#include <chrono>
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include <chrono>
 #include <depthai/depthai.hpp>
+#include <future>
+#include <memory>
+#include <utility>
 
+#include "kimera-vio/dataprovider/OAK3DFeatureDataProvider.h"
 #include "kimera-vio/dataprovider/OAKDataProvider.h"
 #include "kimera-vio/dataprovider/OAKStereoDataProvider.h"
-#include "kimera-vio/dataprovider/OAK3DFeatureDataProvider.h"
-
 #include "kimera-vio/frontend/StereoImuSyncPacket.h"
 #include "kimera-vio/logging/Logger.h"
-#include "kimera-vio/pipeline/Pipeline.h"
 #include "kimera-vio/pipeline/MonoImuPipeline.h"
-#include "kimera-vio/pipeline/StereoImuPipeline.h"
+#include "kimera-vio/pipeline/Pipeline.h"
 #include "kimera-vio/pipeline/RgbdImuPipeline.h"
+#include "kimera-vio/pipeline/StereoImuPipeline.h"
 #include "kimera-vio/utils/Statistics.h"
 #include "kimera-vio/utils/Timer.h"
-
 
 DEFINE_string(
     params_folder_path,
@@ -46,98 +43,167 @@ DEFINE_bool(use_rosbag_dataset,
             false,
             "Enable using rosbag dataset instead of camera streams.");
 
-DEFINE_string(
-    calibration_file_name,
-    "calib.json",
-    "Name of the json file which contains calibration.");
+DEFINE_string(calibration_file_name,
+              "calib.json",
+              "Name of the json file which contains calibration.");
 
 bool enableStereoFeature = false;
 
-dai::Pipeline createPipeline(VIO::VioParams params, std::string device_id){
-      dai::Pipeline pipeline;
-      pipeline.setXLinkChunkSize(0);
-      // Define sources and outputs
-      // std::shared_
-      auto monoLeft = pipeline.create<dai::node::MonoCamera>();
-      auto monoRight = pipeline.create<dai::node::MonoCamera>();
-      auto imu = pipeline.create<dai::node::IMU>();
+void printMatrix(std::vector<std::vector<float>> matrix) {
+  using namespace std;
+  std::string out = "[";
+  for (auto row : matrix) {
+    out += "[";
+    for (auto val : row) out += to_string(val) + ", ";
+    out = out.substr(0, out.size() - 2) + "]\n";
+  }
+  out = out.substr(0, out.size() - 1) + "]\n\n";
+  std::cout << out;
+}
 
-      // Properties
-      monoLeft->setResolution(dai::MonoCameraProperties::SensorResolution::THE_720_P);
-      monoLeft->setBoardSocket(dai::CameraBoardSocket::LEFT);
-      monoRight->setResolution(dai::MonoCameraProperties::SensorResolution::THE_720_P);
-      monoRight->setBoardSocket(dai::CameraBoardSocket::RIGHT);
+dai::Pipeline createPipeline(VIO::VioParams params,
+                             std::string calibration_file_name) {
+  dai::Pipeline pipeline;
+  pipeline.setXLinkChunkSize(0);
+  // Define sources and outputs
+  dai::Node::Id leftNodeId, rightNodeId;
+  std::shared_ptr<dai::Node> monoLeft;
+  std::shared_ptr<dai::Node> monoRight;
+  auto xoutL = pipeline.create<dai::node::XLinkOut>();
+  xoutL->setStreamName("left");
 
-      // enable ACCELEROMETER_RAW at 500 hz rate
-      imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW, 500);
-      // enable GYROSCOPE_RAW at 400 hz rate
-      imu->enableIMUSensor(dai::IMUSensor::GYROSCOPE_RAW, 400);
+  if (FLAGS_use_rosbag_dataset) {
+    monoLeft = pipeline.create<dai::node::XLinkIn>();
+    monoRight = pipeline.create<dai::node::XLinkIn>();
+    leftNodeId = monoLeft->id;
+    rightNodeId = monoRight->id;
+    std::string calib_path =
+        FLAGS_params_folder_path + "/" + calibration_file_name;
+    dai::CalibrationHandler calibData(calib_path);
+    std::vector<std::vector<float>> intrinsics;
+    int width, height;
 
-      // min number of imu msgs in batch of X, if the host is not blocked and USB bandwidth is available
-      imu->setBatchReportThreshold(14);
-      // maximum number of IMU packets in a batch, if it's reached device will block sending until host can receive it
-      // if lower or equal to batchReportThreshold then the sending is always blocking on device
-      // useful to reduce device's CPU load  and number of lost packets, if CPU load is high on device side due to multiple nodes
-      imu->setMaxBatchReports(25);
+    std::cout << "Intrinsics from defaultIntrinsics function:" << std::endl;
+    std::tie(intrinsics, width, height) =
+        calibData.getDefaultIntrinsics(dai::CameraBoardSocket::LEFT);
+    printMatrix(intrinsics);  // Logging just to be sure.
+    pipeline.setCalibrationData(calibData);
+  } else {
+    monoLeft = pipeline.create<dai::node::MonoCamera>();
+    monoRight = pipeline.create<dai::node::MonoCamera>();
+    auto imu = pipeline.create<dai::node::IMU>();
 
-      auto xoutImu = pipeline.create<dai::node::XLinkOut>();
-      auto xoutL = pipeline.create<dai::node::XLinkOut>();
+    auto leftCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoLeft);
+    auto rightCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoRight);
 
-      // XLinkOut
-      xoutImu->setStreamName("imu");
-      xoutL->setStreamName("left");
+    // Properties
+    leftCam->setResolution(
+        dai::MonoCameraProperties::SensorResolution::THE_720_P);
+    leftCam->setBoardSocket(dai::CameraBoardSocket::LEFT);
+    rightCam->setResolution(
+        dai::MonoCameraProperties::SensorResolution::THE_720_P);
+    rightCam->setBoardSocket(dai::CameraBoardSocket::RIGHT);
 
-    if (enableStereoFeature){
-      auto stereo = pipeline.create<dai::node::StereoDepth>();
-      // Stereo Config
-      stereo->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_ACCURACY);
-      stereo->initialConfig.setMedianFilter(dai::MedianFilter::KERNEL_5x5);
-      stereo->setLeftRightCheck(true);
-      stereo->setExtendedDisparity(false);
-      stereo->setSubpixel(true);
-      stereo->setDepthAlign(dai::CameraBoardSocket::LEFT);
+    // enable ACCELEROMETER_RAW at 500 hz rate
+    imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW, 500);
+    // enable GYROSCOPE_RAW at 400 hz rate
+    imu->enableIMUSensor(dai::IMUSensor::GYROSCOPE_RAW, 400);
 
-      //  Linking
-      auto xoutDepth = pipeline.create<dai::node::XLinkOut>();
-      xoutDepth->setStreamName("depth");
+    // min number of imu msgs in batch of X, if the host is not blocked and USB
+    // bandwidth is available
+    imu->setBatchReportThreshold(14);
+    // maximum number of IMU packets in a batch, if it's reached device will
+    // block sending until host can receive it if lower or equal to
+    // batchReportThreshold then the sending is always blocking on device useful
+    // to reduce device's CPU load  and number of lost packets, if CPU load is
+    // high on device side due to multiple nodes
+    imu->setMaxBatchReports(25);
 
-      stereo->depth.link(xoutDepth->input);
-      monoLeft->out.link(stereo->left);
-      monoRight->out.link(stereo->right);
-
-      stereo->syncedLeft.link(xoutL->input);      
-
-      // Feature Tracker setup
-      auto featureTrackerRight = pipeline.create<dai::node::FeatureTracker>();
-      monoLeft->out.link(featureTrackerRight->inputImage);
-
-      auto numShaves = 2;
-      auto numMemorySlices = 2;
-      featureTrackerRight->setHardwareResources(numShaves, numMemorySlices);
-
-      // Config Optical FLow  
-      // auto featureTrackerConfig = dai::FeatureTrackerConfig();
-      // featureTrackerConfig.setOpticalFlow();
-      // // TODO(Saching): Use FULL control of Corner Detector in future for experimentation
-      // featureTrackerConfig.setCornerDetector(dai::RawFeatureTrackerConfig::CornerDetector::Type::HARRIS);
-      // featureTrackerConfig.setFeatureMaintainer(true);
-      // featureTrackerRight->initialConfig.set(featureTrackerConfig.get());
-      featureTrackerRight->initialConfig.setNumTargetFeatures(params.frontend_params_.feature_detector_params_.max_features_per_frame_);
-
-      auto xoutTrackedFeaturesR = pipeline.create<dai::node::XLinkOut>();
-      xoutTrackedFeaturesR->setStreamName("trackers");
-      featureTrackerRight->outputFeatures.link(xoutTrackedFeaturesR->input);
-    }
-    else{
-      auto xoutR = pipeline.create<dai::node::XLinkOut>();
-      xoutR->setStreamName("right");
-      monoLeft->out.link(xoutL->input);
-      monoRight->out.link(xoutR->input);
-    }
-
+    auto xoutImu = pipeline.create<dai::node::XLinkOut>();
+    // XLinkOut
+    xoutImu->setStreamName("imu");
     imu->out.link(xoutImu->input);
-    return pipeline;
+
+    leftNodeId = leftCam->id;
+    rightNodeId = rightCam->id;
+  }
+
+  // auto leftCam = VIO::safeCast<dai::Node,
+  // dai::node::MonoCamera>(pipeline.getNode(leftNodeId)); auto rightCam =
+  // pipeline.getNode(rightNodeId);
+
+  if (enableStereoFeature) {
+    auto stereo = pipeline.create<dai::node::StereoDepth>();
+    // Stereo Config
+    stereo->setDefaultProfilePreset(
+        dai::node::StereoDepth::PresetMode::HIGH_ACCURACY);
+    stereo->initialConfig.setMedianFilter(dai::MedianFilter::KERNEL_5x5);
+    stereo->setLeftRightCheck(true);
+    stereo->setExtendedDisparity(false);
+    stereo->setSubpixel(true);
+    stereo->setDepthAlign(dai::CameraBoardSocket::LEFT);
+
+    //  Linking
+    auto xoutDepth = pipeline.create<dai::node::XLinkOut>();
+    xoutDepth->setStreamName("depth");
+
+    stereo->depth.link(xoutDepth->input);
+    stereo->syncedLeft.link(xoutL->input);
+
+    // Feature Tracker setup
+    auto featureTrackerRight = pipeline.create<dai::node::FeatureTracker>();
+    if (FLAGS_use_rosbag_dataset) {
+      auto leftCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoLeft);
+      auto rightCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoRight);
+      leftCam->out.link(featureTrackerRight->inputImage);
+      leftCam->out.link(stereo->left);
+      rightCam->out.link(stereo->right);
+    } else {
+      auto leftCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoLeft);
+      auto rightCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoRight);
+      leftCam->out.link(featureTrackerRight->inputImage);
+      leftCam->out.link(stereo->left);
+      rightCam->out.link(stereo->right);
     }
+
+    auto numShaves = 2;
+    auto numMemorySlices = 2;
+    featureTrackerRight->setHardwareResources(numShaves, numMemorySlices);
+
+    // Config Optical FLow
+    // auto featureTrackerConfig = dai::FeatureTrackerConfig();
+    // featureTrackerConfig.setOpticalFlow();
+    // // TODO(Saching): Use FULL control of Corner Detector in future for
+    // experimentation
+    // featureTrackerConfig.setCornerDetector(dai::RawFeatureTrackerConfig::CornerDetector::Type::HARRIS);
+    // featureTrackerConfig.setFeatureMaintainer(true);
+    // featureTrackerRight->initialConfig.set(featureTrackerConfig.get());
+    featureTrackerRight->initialConfig.setNumTargetFeatures(
+        params.frontend_params_.feature_detector_params_
+            .max_features_per_frame_);
+
+    auto xoutTrackedFeaturesR = pipeline.create<dai::node::XLinkOut>();
+    xoutTrackedFeaturesR->setStreamName("trackers");
+    featureTrackerRight->outputFeatures.link(xoutTrackedFeaturesR->input);
+  } else {
+    auto xoutR = pipeline.create<dai::node::XLinkOut>();
+    xoutR->setStreamName("right");
+
+    if (FLAGS_use_rosbag_dataset) {
+      auto leftCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoLeft);
+      auto rightCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoRight);
+      leftCam->out.link(xoutL->input);
+      rightCam->out.link(xoutR->input);
+    } else {
+      auto leftCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoLeft);
+      auto rightCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoRight);
+      leftCam->out.link(xoutL->input);
+      rightCam->out.link(xoutR->input);
+    }
+  }
+
+  return pipeline;
+}
 
 int main(int argc, char* argv[]) {
   // Initialize Google's flags library.
@@ -147,23 +213,24 @@ int main(int argc, char* argv[]) {
 
   // Parse VIO parameters from gflags.
   VIO::VioParams vio_params(FLAGS_params_folder_path,
-                "PipelineParams.yaml",
-                "ImuParams.yaml",
-                "LeftCameraParamsS2BNO.yaml",
-                "RightCameraParamsS2BNO.yaml",
-                "FrontendParams.yaml",
-                "BackendParams.yaml",
-                "LcdParams.yaml",
-                "DisplayParams.yaml");
+                            "PipelineParams.yaml",
+                            "ImuParams.yaml",
+                            "LeftCameraParamsS2BNO.yaml",
+                            "RightCameraParamsS2BNO.yaml",
+                            "FrontendParams.yaml",
+                            "BackendParams.yaml",
+                            "LcdParams.yaml",
+                            "DisplayParams.yaml");
 
   enableStereoFeature = vio_params.frontend_params_.use_on_device_tracking_;
-  std::cout << "Is on device feature enabled: " << std::boolalpha <<  enableStereoFeature << std::endl;
+  std::cout << "Is on device feature enabled: " << std::boolalpha
+            << enableStereoFeature << std::endl;
   // Build dataset parser.
   VIO::DataProviderInterface::Ptr dataset_parser;
-  if(enableStereoFeature){
-    dataset_parser = std::make_shared<VIO::OAK3DFeatureDataProvider>(vio_params);
-  }
-  else{
+  if (enableStereoFeature) {
+    dataset_parser =
+        std::make_shared<VIO::OAK3DFeatureDataProvider>(vio_params);
+  } else {
     dataset_parser = std::make_shared<VIO::OAKStereoDataProvider>(vio_params);
   }
   CHECK(dataset_parser);
@@ -194,31 +261,24 @@ int main(int argc, char* argv[]) {
       std::bind(&VIO::DataProviderInterface::shutdown, dataset_parser));
 
   // Register callback to vio pipeline.
-  dataset_parser->registerImuSingleCallback(
-      std::bind(&VIO::Pipeline::fillSingleImuQueue,
-                vio_pipeline,
-                std::placeholders::_1));
+  dataset_parser->registerImuSingleCallback(std::bind(
+      &VIO::Pipeline::fillSingleImuQueue, vio_pipeline, std::placeholders::_1));
   // We use blocking variants to avoid overgrowing the input queues (use
   // the non-blocking versions with real sensor streams)
-  dataset_parser->registerLeftFrameCallback(
-      std::bind(&VIO::Pipeline::fillLeftFrameQueue,
-                vio_pipeline,
-                std::placeholders::_1));
+  dataset_parser->registerLeftFrameCallback(std::bind(
+      &VIO::Pipeline::fillLeftFrameQueue, vio_pipeline, std::placeholders::_1));
 
   if (vio_params.frontend_type_ == VIO::FrontendType::kStereoImu) {
     VIO::StereoImuPipeline::Ptr stereo_pipeline =
-        VIO::safeCast<VIO::Pipeline, VIO::StereoImuPipeline>(
-            vio_pipeline);
+        VIO::safeCast<VIO::Pipeline, VIO::StereoImuPipeline>(vio_pipeline);
 
     dataset_parser->registerRightFrameCallback(
         std::bind(&VIO::StereoImuPipeline::fillRightFrameQueue,
                   stereo_pipeline,
                   std::placeholders::_1));
-  }
-  else if (vio_params.frontend_type_ == VIO::FrontendType::kRgbdImu) {
+  } else if (vio_params.frontend_type_ == VIO::FrontendType::kRgbdImu) {
     VIO::RgbdImuPipeline::Ptr rgbd_pipeline =
-        VIO::safeCast<VIO::Pipeline, VIO::RgbdImuPipeline>(
-            vio_pipeline);
+        VIO::safeCast<VIO::Pipeline, VIO::RgbdImuPipeline>(vio_pipeline);
 
     dataset_parser->registerDepthFrameCallback(
         std::bind(&VIO::RgbdImuPipeline::fillDepthFrameQueue,
@@ -228,34 +288,34 @@ int main(int argc, char* argv[]) {
     //     std::bind(&VIO::RgbdImuPipeline::fillFeatureTrackletsQueue,
     //               rgbd_pipeline,
     //               std::placeholders::_1));
-
   }
 
-
-
   // ------------------------ The OAK's Pipeline ------------------------ //
-  dai::Pipeline pipeline = createPipeline(vio_params, FLAGS_calibration_file_name);
+  dai::Pipeline pipeline =
+      createPipeline(vio_params, FLAGS_calibration_file_name);
   auto daiDevice = std::make_shared<dai::Device>(pipeline);
 
   auto leftQueue = daiDevice->getOutputQueue("left", 10, false);
   auto imuQueue = daiDevice->getOutputQueue("imu", 10, false);
 
   VIO::OAKDataProvider::Ptr oak_data_parser =
-        VIO::safeCast<VIO::DataProviderInterface, VIO::OAKDataProvider>(dataset_parser);
+      VIO::safeCast<VIO::DataProviderInterface, VIO::OAKDataProvider>(
+          dataset_parser);
 
-// ---------------------------ASYNC Launch-------------------------------- //
+  // ---------------------------ASYNC Launch-------------------------------- //
   oak_data_parser->setLeftImuQueues(leftQueue, imuQueue);
-  if(enableStereoFeature){
+  if (enableStereoFeature) {
     auto depthQueue = daiDevice->getOutputQueue("depth", 10, false);
     auto featureQueue = daiDevice->getOutputQueue("trackers", 10, false);
     VIO::OAK3DFeatureDataProvider::Ptr oak_feature_data_parser =
-      VIO::safeCast<VIO::DataProviderInterface, VIO::OAK3DFeatureDataProvider>(dataset_parser);
+        VIO::safeCast<VIO::DataProviderInterface,
+                      VIO::OAK3DFeatureDataProvider>(dataset_parser);
     oak_feature_data_parser->setDepthFeatureQueues(depthQueue, featureQueue);
-  }
-  else{
+  } else {
     VIO::OAKStereoDataProvider::Ptr oak_feature_data_parser =
-      VIO::safeCast<VIO::DataProviderInterface, VIO::OAKStereoDataProvider>(dataset_parser);
-    
+        VIO::safeCast<VIO::DataProviderInterface, VIO::OAKStereoDataProvider>(
+            dataset_parser);
+
     auto rightQueue = daiDevice->getOutputQueue("right", 10, false);
     oak_feature_data_parser->setRightQueue(rightQueue);
   }
@@ -264,24 +324,22 @@ int main(int argc, char* argv[]) {
   auto tic = VIO::utils::Timer::tic();
   bool is_pipeline_successful = false;
   if (vio_params.parallel_run_) {
+    // leftQueue->addCallback(std::bind(&VIO::OAKDataProvider::leftImageCallback,
+    // oak_data_parser, std::placeholders::_1, std::placeholders::_2));
+    // rightQueue->addCallback(std::bind(&VIO::OAKDataProvider::rightImageCallback,
+    // oak_data_parser, std::placeholders::_1, std::placeholders::_2));
+    // imuQueue->addCallback(std::bind(&VIO::OAKDataProvider::imuCallback,
+    // oak_data_parser, std::placeholders::_1, std::placeholders::_2));
 
-    // leftQueue->addCallback(std::bind(&VIO::OAKDataProvider::leftImageCallback, oak_data_parser, std::placeholders::_1, std::placeholders::_2));
-    // rightQueue->addCallback(std::bind(&VIO::OAKDataProvider::rightImageCallback, oak_data_parser, std::placeholders::_1, std::placeholders::_2));
-    // imuQueue->addCallback(std::bind(&VIO::OAKDataProvider::imuCallback, oak_data_parser, std::placeholders::_1, std::placeholders::_2));
-
-    auto handle = std::async(std::launch::async,
-                             &VIO::DataProviderInterface::spin,
-                             dataset_parser);
+    auto handle = std::async(
+        std::launch::async, &VIO::DataProviderInterface::spin, dataset_parser);
     auto handle_pipeline =
-        std::async(std::launch::async,
-                   &VIO::Pipeline::spin,
-                   vio_pipeline);
-    auto handle_shutdown =
-        std::async(std::launch::async,
-                   &VIO::Pipeline::shutdownWhenFinished,
-                   vio_pipeline,
-                   800,
-                   true);
+        std::async(std::launch::async, &VIO::Pipeline::spin, vio_pipeline);
+    auto handle_shutdown = std::async(std::launch::async,
+                                      &VIO::Pipeline::shutdownWhenFinished,
+                                      vio_pipeline,
+                                      800,
+                                      true);
     vio_pipeline->spinViz();
     is_pipeline_successful = !handle.get();
     handle_shutdown.get();
