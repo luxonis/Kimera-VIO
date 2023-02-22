@@ -81,7 +81,6 @@ echo """ Launching:
 $BUILD_PATH/stereoVIO_OAKD \
   --params_folder_path="$PARAMS_PATH" \
   --use_lcd="$USE_LCD" \
-  --enable_ondevice_stereo_feature="$USE_ONDEV" \
   --vocabulary_path="$VOCABULARY_PATH/ORBvoc.yml" \
   --flagfile="$PARAMS_PATH/flags/stereoVIO_OAK.flags" \
   --flagfile="$PARAMS_PATH/flags/Mesher.flags" \
