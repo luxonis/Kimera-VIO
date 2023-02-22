@@ -66,7 +66,6 @@ dai::Pipeline createPipeline(VIO::VioParams params,
   dai::Pipeline pipeline;
   pipeline.setXLinkChunkSize(0);
   // Define sources and outputs
-  dai::Node::Id leftNodeId, rightNodeId;
   std::shared_ptr<dai::Node> monoLeft;
   std::shared_ptr<dai::Node> monoRight;
   auto xoutL = pipeline.create<dai::node::XLinkOut>();
@@ -75,8 +74,6 @@ dai::Pipeline createPipeline(VIO::VioParams params,
   if (FLAGS_use_rosbag_dataset) {
     monoLeft = pipeline.create<dai::node::XLinkIn>();
     monoRight = pipeline.create<dai::node::XLinkIn>();
-    leftNodeId = monoLeft->id;
-    rightNodeId = monoRight->id;
     std::string calib_path =
         FLAGS_params_folder_path + "/" + calibration_file_name;
     dai::CalibrationHandler calibData(calib_path);
@@ -123,9 +120,6 @@ dai::Pipeline createPipeline(VIO::VioParams params,
     // XLinkOut
     xoutImu->setStreamName("imu");
     imu->out.link(xoutImu->input);
-
-    leftNodeId = leftCam->id;
-    rightNodeId = rightCam->id;
   }
 
   // auto leftCam = VIO::safeCast<dai::Node,
