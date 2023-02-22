@@ -294,7 +294,7 @@ StatusStereoMeasurementsPtr StereoVisionImuFrontend::processStereoFrame(
   // TODO this copies the stereo frame!!
   stereoFrame_k_ = std::make_shared<StereoFrame>(cur_frame);
   Frame* left_frame_k = &stereoFrame_k_->left_frame_;
-  LOG(WARNING) << "Features in the previous frame -> " << stereoFrame_km1_->left_frame_.keypoints_.size();
+  VLOG(5) << "Features in the previous frame -> " << stereoFrame_km1_->left_frame_.keypoints_.size();
 
   /////////////////////// MONO TRACKING ////////////////////////////////////////
   VLOG(2) << "Starting feature tracking...";
@@ -474,11 +474,11 @@ StatusStereoMeasurementsPtr StereoVisionImuFrontend::processStereoFrame(
 /* -------------------------------------------------------------------------- */
 void StereoVisionImuFrontend::outlierRejectionStereo(
     const gtsam::Rot3& calLrectLkf_R_camLrectKf_imu,
-    const StereoFrame::Ptr& left_frame_lkf,
-    const StereoFrame::Ptr& left_frame_k,
+    const StereoFrame::Ptr& stereo_frame_lkf,
+    const StereoFrame::Ptr& stereo_frame_k,
     TrackingStatusPose* status_pose_stereo) {
-  CHECK(left_frame_lkf);
-  CHECK(left_frame_k);
+  CHECK(stereo_frame_lkf);
+  CHECK(stereo_frame_k);
   CHECK(tracker_);
   CHECK_NOTNULL(status_pose_stereo);
 
@@ -489,14 +489,14 @@ void StereoVisionImuFrontend::outlierRejectionStereo(
     // 1-point RANSAC.
     std::tie(*status_pose_stereo, infoMatStereoTranslation) =
         tracker_->geometricOutlierRejectionStereoGivenRotation(
-            *stereoFrame_lkf_,
-            *stereoFrame_k_,
+            *stereo_frame_lkf,
+            *stereo_frame_k,
             stereo_camera_,
             calLrectLkf_R_camLrectKf_imu);
   } else {
     // 3-point RANSAC.
     *status_pose_stereo = tracker_->geometricOutlierRejectionStereo(
-        *stereoFrame_lkf_, *stereoFrame_k_);
+        *stereo_frame_lkf, *stereo_frame_k);
     LOG_IF(WARNING, force_53point_ransac_) << "3-point RANSAC was enforced!";
   }
 

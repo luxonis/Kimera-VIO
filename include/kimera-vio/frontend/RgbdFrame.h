@@ -15,14 +15,14 @@
 #pragma once
 
 #include "kimera-vio/frontend/Frame.h"
-#include "kimera-vio/frontend/rgbd/DepthFrame.h"
+#include "kimera-vio/frontend/DepthFrame.h"
 #include "kimera-vio/pipeline/PipelinePayload.h"
 
 namespace VIO {
 
-class RgbdFrame : public PipelinePayload {
- public:
-  KIMERA_DELETE_COPY_CONSTRUCTORS(RgbdFrame);
+class RgbdFrame {
+  public:
+  // KIMERA_DELETE_COPY_CONSTRUCTORS(RgbdFrame);
   KIMERA_POINTER_TYPEDEFS(RgbdFrame);
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -31,10 +31,30 @@ class RgbdFrame : public PipelinePayload {
             Frame::UniquePtr intensity_img,
             DepthFrame::UniquePtr depth_img);
 
- public:
-  const FrameId id_;
-  Frame::UniquePtr intensity_img_;
-  DepthFrame::UniquePtr depth_img_;
+  RgbdFrame(const RgbdFrame& rgbd_frame);
+
+  inline void setIsKeyframe(bool is_kf) {
+    is_keyframe_ = is_kf;
+    intensity_img_->isKeyframe_ = is_kf;
+  }
+
+  inline bool isKeyframe() const { return is_keyframe_; }
+
+  void calculate3dKeypoints();
+
+  void checkRgbdFrame() const;
+  private:
+    bool is_keyframe_;
+
+
+  public:
+    const FrameId id_;
+    //! Timestamp of this stereo frame.
+    const Timestamp timestamp_;
+    Frame::UniquePtr intensity_img_;
+    DepthFrame::UniquePtr depth_img_;
+    std::vector<gtsam::Vector3> keypoints_3d_;
+
 };
 
 }  // namespace VIO

@@ -27,8 +27,8 @@
 #include <glog/logging.h>
 
 #include "kimera-vio/dataprovider/MonoDataProviderModule.h"
-#include "kimera-vio/frontend/rgbd/RgbdFrame.h"
-#include "kimera-vio/frontend/rgbd/RgbdImuSyncPacket.h"
+#include "kimera-vio/frontend/RgbdFrame.h"
+#include "kimera-vio/frontend/RgbdImuSyncPacket.h"
 #include "kimera-vio/pipeline/Pipeline-definitions.h"
 #include "kimera-vio/pipeline/PipelineModule.h"
 #include "kimera-vio/utils/Macros.h"
@@ -85,7 +85,9 @@ class RgbdDataProviderModule : public MonoDataProviderModule {
 
   //! Checks if the module has work to do (should check input queues are empty)
   inline bool hasWork() const override {
-    return MonoDataProviderModule::hasWork() || !depth_frame_queue_.empty();
+    // return MonoDataProviderModule::hasWork() || !depth_frame_queue_.empty();
+    // Check StereoDataProviderModule.h   inline bool hasWork() const for why
+    return true;
   }
 
  private:
