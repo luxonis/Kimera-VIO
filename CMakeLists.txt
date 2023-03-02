@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.10.2)  # CMake version in Ubuntu 18.04 LTS
 project(kimera_vio VERSION 1.0 LANGUAGES CXX C)
-# add_compile_options(-g)
+add_compile_options(-g)
 
 # Make sure that custom modules like FindXXXX are found
 # Prefer to use system installation of gflags/glog
@@ -17,6 +17,28 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+message(STATUS "=========================== Start Setup Backward-CPP ===================================")
+# configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/backward.cmake
+# external/backward-cpp-download/CMakeLists.txt)
+# execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+#   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external/backward-cpp-download"
+#   OUTPUT_QUIET)
+# execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+#   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external/backward-cpp-download"
+#   OUTPUT_QUIET)
+
+include(FetchContent)
+
+# Also requires one of: libbfd (gnu binutils), libdwarf, libdw (elfutils)
+FetchContent_Declare(backward
+        GIT_REPOSITORY https://github.com/bombela/backward-cpp
+        GIT_TAG v1.6)
+FetchContent_MakeAvailable(backward)
+
+# file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+message(STATUS "====================  End Setup Backward-CPP ===========================")
+
+
 message(STATUS "==============================================================")
 message(STATUS "====================  Dependencies ===========================")
 
@@ -29,6 +51,25 @@ if(NOT TARGET Boost::boost)
   INTERFACE_LINK_LIBRARIES "${Boost_LIBRARIES}"
   INTERFACE_INCLUDE_DIRECTORIES "${Boost_INCLUDE_DIRS}")
 endif()
+
+# find_package(Backward REQUIRED)
+
+# ROSbag readers
+find_package(rclcpp REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(sensor_msgs REQUIRED)
+
+# find_package(rmw REQUIRED)
+# find_package(rcutils REQUIRED)
+# find_package(rcpputils REQUIRED)
+# find_package(rmw_implementation REQUIRED)
+
+# find_package(rosidl_runtime_c REQUIRED)
+# find_package(rosidl_runtime_cpp REQUIRED)
+# find_package(rosidl_typesupport_c REQUIRED)
+# find_package(rosidl_typesupport_cpp REQUIRED)
+# find_package(rosidl_typesupport_introspection_cpp REQUIRED)
 
 find_package(Gflags REQUIRED)
 find_package(Glog 0.3.5 REQUIRED)
@@ -85,6 +126,7 @@ endif()
 ### Compile the code
 add_library(${PROJECT_NAME} SHARED "")
 
+# add_library(example ${SOURCES} ${BACKWARD_ENABLE}) # Notice the "BACKWARD_ENABLE" here
 ### Add source code for data provider.
 add_subdirectory(include/kimera-vio/dataprovider)
 add_subdirectory(src/dataprovider)
@@ -145,7 +187,40 @@ target_link_libraries(${PROJECT_NAME}
     gtsam_unstable
     depthai::core
     depthai::opencv
-)
+
+    ${BACKWARD_ENABLE}
+
+    rclcpp::rclcpp
+    rosbag2_cpp::rosbag2_cpp
+    rosbag2_storage::rosbag2_storage
+    sensor_msgs::sensor_msgs__rosidl_generator_c
+    sensor_msgs::sensor_msgs__rosidl_generator_cpp
+
+    sensor_msgs::sensor_msgs__rosidl_typesupport_c
+    sensor_msgs::sensor_msgs__rosidl_typesupport_cpp
+
+    sensor_msgs::sensor_msgs__rosidl_typesupport_fastrtps_c
+    sensor_msgs::sensor_msgs__rosidl_typesupport_fastrtps_cpp
+    
+    sensor_msgs::sensor_msgs__rosidl_typesupport_introspection_c
+    sensor_msgs::sensor_msgs__rosidl_typesupport_introspection_cpp
+    
+    sensor_msgs::sensor_msgs__rosidl_generator_py
+    
+    # rmw::rmw
+    # rcutils::rcutils
+    # rcpputils::rcpputils
+    # rmw_implementation::rmw_implementation
+
+    # rosidl_runtime_c::rosidl_runtime_c
+    # rosidl_runtime_cpp::rosidl_runtime_cpp    
+    # rosidl_typesupport_c::rosidl_typesupport_c
+    # rosidl_typesupport_cpp::rosidl_typesupport_cpp
+    # rosidl_typesupport_introspection_cpp::rosidl_typesupport_introspection_cpp
+    )
+
+
+add_backward(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     ${OpenCV_INCLUDE_DIRS}
@@ -175,23 +250,26 @@ target_compile_options(${PROJECT_NAME}
   PRIVATE -Wall -pipe
   PRIVATE -march=native
 )
-
+# message(("Backward sources are ---------------------------------------------------------------->"))
+# message(${SOURCES})
 # We would just need to say cxx_std_11 if we were using cmake 3.8
 target_compile_features(${PROJECT_NAME} PUBLIC
         cxx_auto_type cxx_constexpr cxx_range_for cxx_nullptr cxx_override)
 
 # Add an alias so that library can be used inside the build tree,
 # e.g. when testing
-add_library(kimera_vio::kimera_vio ALIAS kimera_vio)
+add_library(kimera_vio::kimera_vio ALIAS kimera_vio )
 
 add_executable(stereoVIOEuroc ./examples/KimeraVIO.cpp)
 target_link_libraries(stereoVIOEuroc PUBLIC kimera_vio::kimera_vio)
 
-add_executable(stereoVIO_OAKD  ./examples/OakKimeraVIO.cpp)
+add_executable(stereoVIO_OAKD  ./examples/OakKimeraVIO.cpp )
 target_link_libraries(stereoVIO_OAKD PUBLIC kimera_vio::kimera_vio
                                             depthai::core
                                             depthai::opencv
-                                            libnop)
+                                            libnop
+                                            ${BACKWARD_ENABLE})
+add_backward(stereoVIO_OAKD)
 
 ############################### TESTS ##########################################
 ### Add testing
