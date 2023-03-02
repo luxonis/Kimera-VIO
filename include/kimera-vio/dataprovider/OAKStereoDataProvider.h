@@ -52,7 +52,7 @@ class OAKStereoDataProvider : public OAKDataProvider {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   //! Ctor with params.
-  OAKStereoDataProvider(const VioParams& vio_params);
+  OAKStereoDataProvider(const std::string& dataset_path, const VioParams& vio_params);
   
   // //! Ctor from gflags
   // explicit OAKDataProvider(const VioParams& vio_params);

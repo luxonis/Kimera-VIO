@@ -15,7 +15,6 @@
 #include "kimera-vio/dataprovider/OAK3DFeatureDataProvider.h"
 
 #include <algorithm>  // for max
-#include <chrono>
 #include <fstream>
 #include <map>
 #include <string>
@@ -37,12 +36,15 @@
 #include "kimera-vio/utils/YamlParser.h"
 #include "kimera-vio/utils/Timer.h"
 
+
 namespace VIO {
 
 /* -------------------------------------------------------------------------- */
-OAK3DFeatureDataProvider::OAK3DFeatureDataProvider(const VioParams& vio_params)
-    : OAKDataProvider(vio_params), depth_image_count_(0), 
-    feature_msg_count_(0), depth_image_fps_(0), feature_msg_fps_(0) {}
+OAK3DFeatureDataProvider::OAK3DFeatureDataProvider(const std::string& dataset_path, const VioParams& vio_params)
+    : OAKDataProvider(dataset_path, vio_params), depth_image_count_(0), 
+    feature_msg_count_(0), depth_image_fps_(0), feature_msg_fps_(0) {
+        // spinInputRosBag();
+    }
 
 
 /* -------------------------------------------------------------------------- */
@@ -55,23 +57,74 @@ void OAK3DFeatureDataProvider::setDepthFeatureQueues(std::shared_ptr<dai::DataOu
     feature_queue_ = features_queue;
 }
 
+void OAK3DFeatureDataProvider::setRightInputQueues(std::shared_ptr<dai::DataInputQueue> right_input_queue){
+      right_input_queue_ = right_input_queue;
+}
+
+bool OAK3DFeatureDataProvider::spinInputRosBag() {
+    rclcpp::Serialization<sensor_msgs::msg::CompressedImage> image_serialization;
+    rclcpp::Serialization<sensor_msgs::msg::Imu> imu_serialization;
+
+    if (dataset_path_.empty()) {
+        throw std::runtime_error("ROSbag data path is empty.");
+    }
+    while (reader_.has_next()) {
+        auto bag_message = reader_.read_next();
+        // topics.push_back(bag_message->topic_name);
+        // TODO(Sachin): Remove hardcoded topic names
+        if( bag_message->topic_name == "/oaks2/left/image_raw/compressed" || bag_message->topic_name == "/oaks2/right/image_raw/compressed"){
+            sensor_msgs::msg::CompressedImage extracted_image_msg;
+            rclcpp::SerializedMessage extracted_serialized_msg(*bag_message->serialized_data);
+            image_serialization.deserialize_message(&extracted_serialized_msg, &extracted_image_msg);
+            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " With Serialized timestamp (Mostly record time ?) -> " << bag_message->time_stamp;
+            // dai_time_point time_point = rosTimeStamp(extracted_image_msg.header.stamp);
+            dai::ImgFrame dai_image;
+            rosCompressedImageMsgToDepthaiImage(extracted_image_msg, dai_image);
+            if (bag_message->topic_name == "/oaks2/left/image_raw/compressed"){
+                dai_image.setInstanceNum(1);
+                left_input_queue_->send(dai_image);
+            }
+            else if (bag_message->topic_name == "/oaks2/right/image_raw/compressed"){
+                dai_image.setInstanceNum(2);
+                right_input_queue_->send(dai_image);
+            }
+            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " And timestamp in epoch ->  " << time_point.time_since_epoch().count() << " nanosec";
+            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " of format -> " << extracted_image_msg.format;
+        }
+        if (bag_message->topic_name == "/oaks2/imu/data" ){
+            sensor_msgs::msg::Imu extracted_imu_msg;
+            rclcpp::SerializedMessage extracted_serialized_msg(*bag_message->serialized_data);
+            imu_serialization.deserialize_message(&extracted_serialized_msg, &extracted_imu_msg);
+            ImuMeasurement imu_measurement;
+            rosImuMsgToImuMeasurement(extracted_imu_msg, imu_measurement);
+            imu_single_callback_(imu_measurement);
+            // dai_time_point time_point = rosTimeStamp(extracted_imu_msg.header.stamp);
+            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " With Serialized timestamp (Mostly record time ?) -> " << bag_message->time_stamp;
+            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " And timestamp in epoch -> " << time_point.time_since_epoch().count() << " nanosec";;
+        }
+    }
+    return true;
+}
+
 /* -------------------------------------------------------------------------- */
 bool OAK3DFeatureDataProvider::spin() {
     // Spin.
     CHECK_EQ(vio_params_.camera_params_.size(), 2u); // As usual mimicing stereo
     LOG(INFO) << "Data OAK3DFeatureDataProvider Interface: <-------------- Spinning -------------->";
     auto data_grab_tic = VIO::utils::Timer::tic();
+
+    std::string name = "";
     while (!shutdown_) {
 
         std::shared_ptr<dai::ADatatype> left_image  = left_queue_->get<dai::ADatatype>();
         std::shared_ptr<dai::ADatatype> depth_image = depth_queue_->get<dai::ADatatype>();
         std::shared_ptr<dai::ADatatype> feature_map = feature_queue_->get<dai::ADatatype>();
 
-        std::vector<std::shared_ptr<dai::ADatatype>> imu_measurements_list = imu_queue_->getAll<dai::ADatatype>();
-        
-        std::string name = "";
-        for(auto& imu_measurements : imu_measurements_list) {
-            imuCallback(name, imu_measurements);
+        if (dataset_path_.empty()) {
+            std::vector<std::shared_ptr<dai::ADatatype>> imu_measurements_list = imu_queue_->getAll<dai::ADatatype>();
+            for(auto& imu_measurements : imu_measurements_list) {
+                imuCallback(name, imu_measurements);
+            }
         }
         syncImageFeatureGrab(left_image, depth_image, feature_map);
         while(!sync_msgs_.empty()){

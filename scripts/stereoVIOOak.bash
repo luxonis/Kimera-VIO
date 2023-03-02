@@ -13,6 +13,8 @@ LOG_OUTPUT=0
 # Other PATHS
 # All paths can be absolute or relative to this file location.
 
+# USE_DEBUGGER = 0
+
 USE_ONDEV=0
 
 # Build path: specify where the executable for Kimera is.
@@ -24,7 +26,8 @@ PARAMS_PATH="../params/OAK-D-mod"
 
 # Vocabulary path: specify where the vocabulary for loop closure is.
 VOCABULARY_PATH="../vocabulary"
-
+DATASET_PATH="/media/psf/luxonis/VIO-Data/vioslam_test_outside3"
+# DATASET_PATH=""
 # Output path: specify where the output logs will be written.
 # (only used if LOG_OUTPUT is enabled)
 OUTPUT_PATH="../output_logs"
@@ -76,11 +79,11 @@ echo """ Launching:
 # Execute stereoVIOEuroc with given flags.
 # The flag --help will provide you with information about what each flag
 # does.
-# $BUILD_PATH/stereoVIO_OAKD \
-# valgrind --tool=memcheck --vgdb=yes --vgdb-error=0 
+# valgrind --tool=memcheck --vgdb=yes --vgdb-error=0 $BUILD_PATH/stereoVIO_OAKD \
 $BUILD_PATH/stereoVIO_OAKD \
   --params_folder_path="$PARAMS_PATH" \
   --use_lcd="$USE_LCD" \
+  --rosbag_dataset_path="$DATASET_PATH" \
   --vocabulary_path="$VOCABULARY_PATH/ORBvoc.yml" \
   --flagfile="$PARAMS_PATH/flags/stereoVIO_OAK.flags" \
   --flagfile="$PARAMS_PATH/flags/Mesher.flags" \

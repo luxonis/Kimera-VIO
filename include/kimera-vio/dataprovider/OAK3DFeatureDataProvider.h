@@ -52,7 +52,7 @@ class OAK3DFeatureDataProvider : public OAKDataProvider {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   //! Ctor with params.
-  OAK3DFeatureDataProvider(const VioParams& vio_params);
+  OAK3DFeatureDataProvider(const std::string& dataset_path, const VioParams& vio_params);
   
   // //! Ctor from gflags
   // explicit OAKDataProvider(const VioParams& vio_params);
@@ -61,6 +61,7 @@ class OAK3DFeatureDataProvider : public OAKDataProvider {
 
   void setDepthFeatureQueues(std::shared_ptr<dai::DataOutputQueue> depth_queue, std::shared_ptr<dai::DataOutputQueue> features_queue);
 
+  bool spinInputRosBag();
 
   /**
    * @brief spin Spins the dataset until it finishes. If set in sequential mode,
@@ -83,6 +84,12 @@ class OAK3DFeatureDataProvider : public OAKDataProvider {
    */ 
   void depthImageCallback(std::string name, std::shared_ptr<dai::ADatatype> data);
 
+  /**
+   * @brief Queue to connect the xlinkIN of the right image input from dataset
+   * 
+   */ 
+  void setRightInputQueues(std::shared_ptr<dai::DataInputQueue> right_input_queue);
+
  protected:
   /**
    * @brief spinOnce Send data to VIO pipeline on a per-frame basis
@@ -101,6 +108,7 @@ class OAK3DFeatureDataProvider : public OAKDataProvider {
   Timestamp recent_depth_image_timestamp_, recent_feature_timestamp_;
 
   std::shared_ptr<dai::DataOutputQueue> depth_queue_, feature_queue_;
+  std::shared_ptr<dai::DataInputQueue> right_input_queue_;
   // FIXME(Saching): Replace the EurocGtLogger later)
   // EurocGtLogger::UniquePtr logger_;
 };

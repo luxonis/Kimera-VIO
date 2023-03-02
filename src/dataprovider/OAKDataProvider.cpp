@@ -40,15 +40,36 @@
 namespace VIO {
 
 /* -------------------------------------------------------------------------- */
-OAKDataProvider::OAKDataProvider(const VioParams& vio_params)
+OAKDataProvider::OAKDataProvider(const std::string& dataset_path, const VioParams& vio_params)
     : DataProviderInterface(),
+      dataset_path_(dataset_path),
       vio_params_(vio_params),
       imu_measurements_(),
       left_image_count_(0), 
       imu_msg_count_(0), 
       left_image_fps_(0), 
       imu_msg_hz_(0),
-      left_cam_info_(vio_params_.camera_params_.at(0)){}
+      left_cam_info_(vio_params_.camera_params_.at(0)){
+    // storage_options
+    if (!dataset_path_.empty()) {
+        VLOG(2) << "Dataset path: " << dataset_path_;
+        rosbag2_storage::StorageOptions storage_options;
+        storage_options.uri = dataset_path_;
+        storage_options.storage_id = "sqlite3";
+
+        rosbag2_cpp::ConverterOptions converter_options;
+        converter_options.input_serialization_format = "cdr";
+        converter_options.output_serialization_format = "cdr";
+
+        reader_.open(storage_options, converter_options);
+        /* auto topic_metadata_list = reader_.get_all_topics_and_types();
+        VLOG(2) << "Topic metadata list -> ";
+        for(auto topic_metadata : topic_metadata_list) {
+            VLOG(2) << topic_metadata.name << std::endl;
+            VLOG(2) << topic_metadata.type << std::endl;
+        } */
+    }
+}
 
 /* -------------------------------------------------------------------------- */
 OAKDataProvider::~OAKDataProvider() {
@@ -60,6 +81,43 @@ void OAKDataProvider::setLeftImuQueues(std::shared_ptr<dai::DataOutputQueue> lef
     imu_queue_ = imu_queue;
 }
 
+void OAKDataProvider::setLeftInputQueues(std::shared_ptr<dai::DataInputQueue> left_input_queue){
+    left_input_queue_ = left_input_queue;
+}
+
+void OAKDataProvider::rosCompressedImageMsgToDepthaiImage(sensor_msgs::msg::CompressedImage& image_msg, dai::ImgFrame& dai_msg){
+    cv::Mat image = cv::imdecode(image_msg.data, cv::IMREAD_UNCHANGED);
+    // cv::imshow("test Image", image);
+    // cv::waitKey(1);
+    dai_time_point time_point = rosTimeStamp(image_msg.header.stamp);
+            
+    dai_msg.setTimestamp(time_point);
+    dai_msg.setTimestampDevice(time_point);
+    dai_msg.setSize(image.size().width, image.size().height);
+    dai_msg.setType(dai::RawImgFrame::Type::GRAY8);
+    dai_msg.setFrame(image);
+    // Add timestamp
+    // dai_msg
+}
+
+void OAKDataProvider::rosImuMsgToImuMeasurement(sensor_msgs::msg::Imu& imu_msg, ImuMeasurement& imu_measurement){
+    // dai_time_point time_point = rosTimeStamp(imu_msg.header.stamp);
+    builtin_interfaces::msg::Time time = imu_msg.header.stamp;
+    // imu_accgyr << accel.y, -accel.z, -accel.x, gyro.y, -gyro.z, -gyro.x
+    geometry_msgs::msg::Vector3 accel = imu_msg.linear_acceleration;
+    geometry_msgs::msg::Vector3 gyro = imu_msg.angular_velocity;
+    ImuAccGyr imu_data;
+    imu_data << accel.y, -accel.z, -accel.x, gyro.y, -gyro.z, -gyro.x;
+    ImuStamp imu_stamp = std::chrono::nanoseconds(std::chrono::seconds(time.sec)).count() + time.nanosec;
+    imu_measurement.acc_gyr_ = imu_data;
+    imu_measurement.timestamp_ = imu_stamp;
+}
+
+dai_time_point OAKDataProvider::rosTimeStamp(builtin_interfaces::msg::Time time){
+    int64_t epoch_time = std::chrono::nanoseconds(std::chrono::seconds(time.sec)).count() + time.nanosec;
+    dai_time_point time_point{std::chrono::nanoseconds(epoch_time)};
+    return time_point;
+}
 
 /* -------------------------------------------------------------------------- */
 bool OAKDataProvider::spin() {

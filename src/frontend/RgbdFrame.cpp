@@ -75,12 +75,13 @@ void RgbdFrame::calculate3dKeypoints(){
         KeypointCV index = intensity_img_->keypoints_[i];
         Vector3 keypoint_3d;
         // DepthMap is not the norm of the vector, it is the z component.
-        if (depth_img_->depth_img_.at<uint16_t>(std::round(index.y), std::round(index.x)) != 0){
+        uint16_t depth_val = depth_img_->depth_img_.at<uint16_t>(std::floor(index.y), std::floor(index.x));
+        if (depth_val != 0){
           if (depth_img_->depth_img_.type() == CV_16UC1) {
-            keypoint_3d = versor * depth_img_->depth_img_.at<uint16_t>(std::round(index.y), std::round(index.x)) / (versor(2) * 1000);
+            keypoint_3d = versor * depth_val / (versor(2) * 1000);
           }
           else{
-            keypoint_3d = versor * depth_img_->depth_img_.at<uint16_t>(std::round(index.y), std::round(index.x)) / versor(2);
+            keypoint_3d = versor * depth_val / versor(2);
           }
           keypoints_3d_.push_back(keypoint_3d);
         }

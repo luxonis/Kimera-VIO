@@ -40,8 +40,8 @@
 namespace VIO {
 
 /* -------------------------------------------------------------------------- */
-OAKStereoDataProvider::OAKStereoDataProvider(const VioParams& vio_params)
-    : OAKDataProvider(vio_params),
+OAKStereoDataProvider::OAKStereoDataProvider(const std::string& dataset_path, const VioParams& vio_params)
+    : OAKDataProvider(dataset_path, vio_params),
       right_cam_info_(vio_params_.camera_params_.at(1)){}
 
 /* -------------------------------------------------------------------------- */

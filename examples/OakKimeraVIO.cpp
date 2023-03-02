@@ -39,16 +39,16 @@ DEFINE_string(
     "../params/OAK-D-mod",
     "Path to the folder containing the yaml files with the VIO parameters.");
 
-DEFINE_bool(use_rosbag_dataset,
-            false,
-            "Enable using rosbag dataset instead of camera streams.");
+DEFINE_string(rosbag_dataset_path,
+              "",
+              "path to the rosbag2.");
 
 DEFINE_string(calibration_file_name,
               "calib.json",
               "Name of the json file which contains calibration.");
 
 bool enableStereoFeature = false;
-
+bool useDatasets = false;
 void printMatrix(std::vector<std::vector<float>> matrix) {
   using namespace std;
   std::string out = "[";
@@ -71,20 +71,24 @@ dai::Pipeline createPipeline(VIO::VioParams params,
   auto xoutL = pipeline.create<dai::node::XLinkOut>();
   xoutL->setStreamName("left");
 
-  if (FLAGS_use_rosbag_dataset) {
+  if (useDatasets) {
     monoLeft = pipeline.create<dai::node::XLinkIn>();
     monoRight = pipeline.create<dai::node::XLinkIn>();
+    auto leftCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoLeft);
+    auto rightCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoRight);
+    leftCam->setStreamName("left-in");
+    rightCam->setStreamName("right-in");
     std::string calib_path =
         FLAGS_params_folder_path + "/" + calibration_file_name;
-    dai::CalibrationHandler calibData(calib_path);
-    std::vector<std::vector<float>> intrinsics;
-    int width, height;
+    // dai::CalibrationHandler calibData(calib_path);
+    // pipeline.setCalibrationData(calibData);
 
-    std::cout << "Intrinsics from defaultIntrinsics function:" << std::endl;
-    std::tie(intrinsics, width, height) =
-        calibData.getDefaultIntrinsics(dai::CameraBoardSocket::LEFT);
-    printMatrix(intrinsics);  // Logging just to be sure.
-    pipeline.setCalibrationData(calibData);
+    // std::vector<std::vector<float>> intrinsics;
+    // int width, height;
+    // std::cout << "Intrinsics from defaultIntrinsics function:" << std::endl;
+    // std::tie(intrinsics, width, height) =
+    //     calibData.getDefaultIntrinsics(dai::CameraBoardSocket::LEFT);
+    // printMatrix(intrinsics);  // Logging just to be sure.
   } else {
     monoLeft = pipeline.create<dai::node::MonoCamera>();
     monoRight = pipeline.create<dai::node::MonoCamera>();
@@ -146,12 +150,13 @@ dai::Pipeline createPipeline(VIO::VioParams params,
 
     // Feature Tracker setup
     auto featureTrackerRight = pipeline.create<dai::node::FeatureTracker>();
-    if (FLAGS_use_rosbag_dataset) {
+    if (useDatasets) {
       auto leftCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoLeft);
       auto rightCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoRight);
       leftCam->out.link(featureTrackerRight->inputImage);
       leftCam->out.link(stereo->left);
       rightCam->out.link(stereo->right);
+
     } else {
       auto leftCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoLeft);
       auto rightCam = VIO::safeCast<dai::Node, dai::node::MonoCamera>(monoRight);
@@ -183,7 +188,7 @@ dai::Pipeline createPipeline(VIO::VioParams params,
     auto xoutR = pipeline.create<dai::node::XLinkOut>();
     xoutR->setStreamName("right");
 
-    if (FLAGS_use_rosbag_dataset) {
+    if (useDatasets) {
       auto leftCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoLeft);
       auto rightCam = VIO::safeCast<dai::Node, dai::node::XLinkIn>(monoRight);
       leftCam->out.link(xoutL->input);
@@ -217,15 +222,18 @@ int main(int argc, char* argv[]) {
                             "DisplayParams.yaml");
 
   enableStereoFeature = vio_params.frontend_params_.use_on_device_tracking_;
+  useDatasets = !FLAGS_rosbag_dataset_path.empty();
   std::cout << "Is on device feature enabled: " << std::boolalpha
-            << enableStereoFeature << std::endl;
+            << enableStereoFeature << std::endl; 
+    std::cout << "Is dataset mode enabled: " << std::boolalpha
+            << useDatasets << std::endl; 
   // Build dataset parser.
   VIO::DataProviderInterface::Ptr dataset_parser;
   if (enableStereoFeature) {
     dataset_parser =
-        std::make_shared<VIO::OAK3DFeatureDataProvider>(vio_params);
+        std::make_shared<VIO::OAK3DFeatureDataProvider>(FLAGS_rosbag_dataset_path, vio_params);
   } else {
-    dataset_parser = std::make_shared<VIO::OAKStereoDataProvider>(vio_params);
+    dataset_parser = std::make_shared<VIO::OAKStereoDataProvider>(FLAGS_rosbag_dataset_path, vio_params);
   }
   CHECK(dataset_parser);
 
@@ -287,14 +295,27 @@ int main(int argc, char* argv[]) {
   // ------------------------ The OAK's Pipeline ------------------------ //
   dai::Pipeline pipeline =
       createPipeline(vio_params, FLAGS_calibration_file_name);
-  auto daiDevice = std::make_shared<dai::Device>(pipeline);
-
-  auto leftQueue = daiDevice->getOutputQueue("left", 10, false);
-  auto imuQueue = daiDevice->getOutputQueue("imu", 10, false);
+  // std::cout << "-------------------- JSON of OAK Pipeline -----------------" << std::endl;
+  // std::cout << pipeline.serializeToJson() << std::endl;
+  // std::cout << "-------------------- END of JSON of OAK Pipeline -----------------" << std::endl;
 
   VIO::OAKDataProvider::Ptr oak_data_parser =
       VIO::safeCast<VIO::DataProviderInterface, VIO::OAKDataProvider>(
           dataset_parser);
+  auto daiDevice = std::make_shared<dai::Device>(pipeline);
+
+  auto leftQueue = daiDevice->getOutputQueue("left", 10, false);
+  std::shared_ptr<dai::DataOutputQueue> imuQueue;
+  std::shared_ptr<dai::DataInputQueue> leftInputQueue;
+  std::shared_ptr<dai::DataInputQueue> rightInputQueue;
+  if (useDatasets){
+    leftInputQueue = daiDevice->getInputQueue("left-in", 10, false);
+    rightInputQueue = daiDevice->getInputQueue("right-in", 10, false);
+  }
+  else {
+    imuQueue = daiDevice->getOutputQueue("imu", 10, false);
+  }
+
 
   // ---------------------------ASYNC Launch-------------------------------- //
   oak_data_parser->setLeftImuQueues(leftQueue, imuQueue);
@@ -305,6 +326,10 @@ int main(int argc, char* argv[]) {
         VIO::safeCast<VIO::DataProviderInterface,
                       VIO::OAK3DFeatureDataProvider>(dataset_parser);
     oak_feature_data_parser->setDepthFeatureQueues(depthQueue, featureQueue);
+    if (useDatasets){
+      oak_feature_data_parser->setLeftInputQueues(leftInputQueue);
+      oak_feature_data_parser->setRightInputQueues(rightInputQueue);
+    }
   } else {
     VIO::OAKStereoDataProvider::Ptr oak_feature_data_parser =
         VIO::safeCast<VIO::DataProviderInterface, VIO::OAKStereoDataProvider>(
@@ -334,6 +359,16 @@ int main(int argc, char* argv[]) {
                                       vio_pipeline,
                                       800,
                                       true);
+    
+    std::future<bool> dataset_handler;
+    if (useDatasets){
+       VIO::OAK3DFeatureDataProvider::Ptr oak_feature_data_parser =
+                            VIO::safeCast<VIO::DataProviderInterface,
+                                          VIO::OAK3DFeatureDataProvider>(dataset_parser);
+      dataset_handler = std::async(
+        std::launch::async, &VIO::OAK3DFeatureDataProvider::spinInputRosBag, oak_feature_data_parser);
+      dataset_handler.get();
+    }
     vio_pipeline->spinViz();
     is_pipeline_successful = !handle.get();
     handle_shutdown.get();

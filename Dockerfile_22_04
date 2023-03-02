@@ -25,8 +25,9 @@ RUN apt-get update && apt-get install -y \
       libgtk-3-dev \
       libatlas-base-dev gfortran
 
+
 # Install GTSAM
-RUN apt-get update && apt-get install -y libboost-all-dev libtbb-dev libopencv-dev
+RUN apt-get update && apt-get install -y libboost-all-dev libtbb-dev libopencv-dev valgrind
 # ADD https://api.github.com/repos/borglab/gtsam/git/refs/heads/master version.json
 RUN git clone https://github.com/borglab/gtsam.git
 RUN cd gtsam && \

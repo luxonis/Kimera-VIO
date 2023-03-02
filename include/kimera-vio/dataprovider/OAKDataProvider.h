@@ -18,6 +18,7 @@
 #include <string>
 #include <stack> // for syncing
 #include <queue> // for syncing
+#include <chrono>
 
 #include <unordered_map> // for syncing
 #include <vector>
@@ -26,6 +27,7 @@
 #include <opencv2/core/core.hpp>
 
 #include "depthai/depthai.hpp"
+// #include "depthai-shared/datatype/RawImgFrame.hpp"
 
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Cal3DS2.h>
@@ -39,6 +41,19 @@
 #include "kimera-vio/frontend/StereoMatchingParams.h"
 #include "kimera-vio/logging/Logger.h"
 #include "kimera-vio/utils/Macros.h"
+
+// #include <rosbag2_cpp/readers/sequential_reader.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_storage/storage_options.hpp>
+// #include <rosbag2_cpp/converter_interfaces/serialization_format_converter.hpp>
+
+#include <sensor_msgs/msg/compressed_image.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <builtin_interfaces/msg/time.hpp>
+
+using dai_time_point = std::chrono::time_point<std::chrono::steady_clock, std::chrono::steady_clock::duration>;
 
 template <typename T>
 T lerp(const T& a, const T& b, const double t) {
@@ -67,7 +82,7 @@ class OAKDataProvider : public DataProviderInterface {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   //! Ctor with params.
-  OAKDataProvider(const VioParams& vio_params);
+  OAKDataProvider(const std::string& dataset_path, const VioParams& vio_params);
   
   // //! Ctor from gflags
   // explicit OAKDataProvider(const VioParams& vio_params);
@@ -75,6 +90,8 @@ class OAKDataProvider : public DataProviderInterface {
   virtual ~OAKDataProvider();
 
   void setLeftImuQueues(std::shared_ptr<dai::DataOutputQueue> left_queue, std::shared_ptr<dai::DataOutputQueue> imu_queue);
+
+  void setLeftInputQueues(std::shared_ptr<dai::DataInputQueue> left_input_queue);
 
   /**
    * @brief spin Spins the dataset until it finishes. If set in sequential mode,
@@ -106,6 +123,10 @@ class OAKDataProvider : public DataProviderInterface {
     void sendImuMeasurement(dai::IMUReportAccelerometer accel, dai::IMUReportGyroscope gyro);
 
  protected:
+  void rosCompressedImageMsgToDepthaiImage(sensor_msgs::msg::CompressedImage& image_msg, dai::ImgFrame& dai_msg);
+
+  void rosImuMsgToImuMeasurement(sensor_msgs::msg::Imu& imu_msg, ImuMeasurement& imu_measurement);
+
   /**
    * @brief spinOnce Send data to VIO pipeline on a per-frame basis
    * @return if the dataset finished or not
@@ -118,12 +139,15 @@ class OAKDataProvider : public DataProviderInterface {
    */
   void sendImuData() const;
 
+  dai_time_point rosTimeStamp(builtin_interfaces::msg::Time time);
 
 // Get timestamp of a given pair of stereo images & IMU (synchronized).
 Timestamp timestampAtFrame(const std::chrono::time_point<std::chrono::steady_clock, std::chrono::steady_clock::duration>& timestamp);
 
  protected:
   VioParams vio_params_;
+
+  rosbag2_cpp::Reader reader_;
 
   /// Images data.
   // This matches the names of the folders in the dataset
@@ -134,8 +158,10 @@ Timestamp timestampAtFrame(const std::chrono::time_point<std::chrono::steady_clo
   std::vector<ImuMeasurement> imu_measurements_;
   ImuSyncMethod syncMode_ = ImuSyncMethod::LINEAR_INTERPOLATE_ACCEL;
   std::shared_ptr<dai::DataOutputQueue> left_queue_, imu_queue_;
+  std::shared_ptr<dai::DataInputQueue> left_input_queue_;
   // FIXME(Saching): Replace the EurocGtLogger later)
   // EurocGtLogger::UniquePtr logger_;
+  std::string dataset_path_;
 };
 
 }  // namespace VIO

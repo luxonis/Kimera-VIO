@@ -302,6 +302,8 @@ Tracker::geometricOutlierRejectionMonoGivenRotation(
     f_ref.push_back(ref_frame->versors_.at(it.first));
     f_cur.push_back(
         camLrectlkf_R_camLrectkf.rotate(cur_frame->versors_.at(it.second)));
+    // TODOsaching): Shouldn't we use setR12 of AdapterMonoGivenRot from opengv here ?
+    // Use the error rate and configure accordingly. 
   }
 
   // Setup problem.
