@@ -17,27 +17,6 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-message(STATUS "=========================== Start Setup Backward-CPP ===================================")
-# configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/backward.cmake
-# external/backward-cpp-download/CMakeLists.txt)
-# execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
-#   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external/backward-cpp-download"
-#   OUTPUT_QUIET)
-# execute_process(COMMAND "${CMAKE_COMMAND}" --build .
-#   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external/backward-cpp-download"
-#   OUTPUT_QUIET)
-
-include(FetchContent)
-
-# Also requires one of: libbfd (gnu binutils), libdwarf, libdw (elfutils)
-FetchContent_Declare(backward
-        GIT_REPOSITORY https://github.com/bombela/backward-cpp
-        GIT_TAG v1.6)
-FetchContent_MakeAvailable(backward)
-
-# file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
-message(STATUS "====================  End Setup Backward-CPP ===========================")
-
 
 message(STATUS "==============================================================")
 message(STATUS "====================  Dependencies ===========================")
@@ -188,8 +167,6 @@ target_link_libraries(${PROJECT_NAME}
     depthai::core
     depthai::opencv
 
-    ${BACKWARD_ENABLE}
-
     rclcpp::rclcpp
     rosbag2_cpp::rosbag2_cpp
     rosbag2_storage::rosbag2_storage
@@ -219,8 +196,6 @@ target_link_libraries(${PROJECT_NAME}
     # rosidl_typesupport_introspection_cpp::rosidl_typesupport_introspection_cpp
     )
 
-
-add_backward(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     ${OpenCV_INCLUDE_DIRS}
@@ -267,9 +242,7 @@ add_executable(stereoVIO_OAKD  ./examples/OakKimeraVIO.cpp )
 target_link_libraries(stereoVIO_OAKD PUBLIC kimera_vio::kimera_vio
                                             depthai::core
                                             depthai::opencv
-                                            libnop
-                                            ${BACKWARD_ENABLE})
-add_backward(stereoVIO_OAKD)
+                                            libnop)
 
 ############################### TESTS ##########################################
 ### Add testing
