@@ -64,7 +64,7 @@ void OAK3DFeatureDataProvider::setRightInputQueues(std::shared_ptr<dai::DataInpu
 bool OAK3DFeatureDataProvider::spinInputRosBag() {
     rclcpp::Serialization<sensor_msgs::msg::CompressedImage> image_serialization;
     rclcpp::Serialization<sensor_msgs::msg::Imu> imu_serialization;
-
+    int64_t left_image_seq = 0, right_image_seq = 0;
     if (dataset_path_.empty()) {
         throw std::runtime_error("ROSbag data path is empty.");
     }
@@ -82,10 +82,14 @@ bool OAK3DFeatureDataProvider::spinInputRosBag() {
             rosCompressedImageMsgToDepthaiImage(extracted_image_msg, dai_image);
             if (bag_message->topic_name == "/oaks2/left/image_raw/compressed"){
                 dai_image.setInstanceNum(1);
+                dai_image.setSequenceNum(left_image_seq);
+                left_image_seq += 1;
                 left_input_queue_->send(dai_image);
             }
             else if (bag_message->topic_name == "/oaks2/right/image_raw/compressed"){
                 dai_image.setInstanceNum(2);
+                dai_image.setSequenceNum(right_image_seq);
+                right_image_seq += 1;
                 right_input_queue_->send(dai_image);
             }
             // VLOG(2) << "Topic name -> " << bag_message->topic_name << " And timestamp in epoch ->  " << time_point.time_since_epoch().count() << " nanosec";
@@ -97,10 +101,13 @@ bool OAK3DFeatureDataProvider::spinInputRosBag() {
             imu_serialization.deserialize_message(&extracted_serialized_msg, &extracted_imu_msg);
             ImuMeasurement imu_measurement;
             rosImuMsgToImuMeasurement(extracted_imu_msg, imu_measurement);
-            imu_single_callback_(imu_measurement);
-            // dai_time_point time_point = rosTimeStamp(extracted_imu_msg.header.stamp);
-            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " With Serialized timestamp (Mostly record time ?) -> " << bag_message->time_stamp;
-            // VLOG(2) << "Topic name -> " << bag_message->topic_name << " And timestamp in epoch -> " << time_point.time_since_epoch().count() << " nanosec";;
+            if (imu_measurement.timestamp_ > last_input_imu_timestamp_){
+                last_input_imu_timestamp_ = imu_measurement.timestamp_;
+                imu_single_callback_(imu_measurement);
+            }
+            else{
+               LOG(ERROR) << "Dropping an IMU timestanp that is not monotonically increasing";
+            }
         }
     }
     return true;
@@ -204,7 +211,7 @@ void OAK3DFeatureDataProvider::leftImageFeatureCallback(std::shared_ptr<dai::ADa
     CHECK(left_frame_callback_) << "Did you forget to register the left image callback to the VIO Pipeline?";
     auto daiDataPtr = std::dynamic_pointer_cast<dai::ImgFrame>(image);
     auto tracked_features = std::dynamic_pointer_cast<dai::TrackedFeatures>(feature_map)->trackedFeatures;
-
+    VLOG(3) << "Left image frame seq number >------------> " << daiDataPtr->getSequenceNum();
     cv::Mat imageFrame = daiDataPtr->getCvFrame();    
     Timestamp localTimestamp = timestampAtFrame(daiDataPtr->getTimestamp());
     // TODO(saching): Add option to equalize the image from histogram

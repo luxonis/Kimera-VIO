@@ -810,6 +810,7 @@ Tracker::geometricOutlierRejectionRgbdGivenRotation(
   Matrices3f cov_relTranf;
   cov_relTranf.reserve(nrMatches);
 
+  VLOG(4) << "Total number of matches  -> " << matches_ref_cur.size();
   for (const KeypointMatch& it : matches_ref_cur) {
     // Get reference vector and covariance:
     std::tie(f_ref_i, cov_ref_i) = Tracker::getPoint3AndCovarianceRgbd(
@@ -1291,10 +1292,10 @@ void Tracker::findMatchingRgbdKeypoints(
       matches_ref_cur_rgbd->push_back(matches_ref_cur_mono[i]);
     } else {
       VLOG(5) << "Failed match status due to KeypointStatus: "
-              << to_underlying(
+              << KeypointStatusToString(
                      ref_rgbdFrame.intensity_img_->keypoints_undistorted_[ind_ref].first)
-              << " "
-              << to_underlying(
+              << " <-> "
+              << KeypointStatusToString(
                      cur_rgbdFrame.intensity_img_->keypoints_undistorted_[ind_cur].first);
     }
   }

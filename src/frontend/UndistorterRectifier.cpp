@@ -135,7 +135,7 @@ void UndistorterRectifier::checkUndistortedRectifiedLeftKeypoints(
     StatusKeypointsCV* status_kps,
     const float& pixel_tol) const {
   CHECK_NOTNULL(status_kps)->clear();
-  CHECK_EQ(distorted_kps.size(), undistorted_kps.size());
+  CHECK_EQ(distorted_kps.size(), undistorted_kps.size()) << "Sizs of distorted_kps was " << distorted_kps.size() << " vs " << undistorted_kps.size();
   status_kps->reserve(distorted_kps.size());
 
   int invalid_count = 0;
