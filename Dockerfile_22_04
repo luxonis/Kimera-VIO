@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM ubuntu:22.04
+FROM ros:humble-ros-base-jammy
 
 # Author Antoni Rosinol "arosinol@mit.edu"
 
@@ -116,7 +116,7 @@ RUN touch /root/.ssh/known_hosts
 RUN ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts
 
 # install depthai
-RUN git clone --recursive https://github.com/luxonis/depthai-core.git --branch main
+RUN git clone --recursive https://github.com/luxonis/depthai-core.git --branch develop
 RUN cmake -Hdepthai-core -Bdepthai-core/build -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local
 RUN cmake --build depthai-core/build --target install --parallel 4
 
@@ -128,5 +128,5 @@ RUN cmake --build depthai-core/build --target install --parallel 4
 
 RUN mkdir Kimera-VIO
 COPY ./ $DIRPATH/Kimera-VIO
-RUN cd Kimera-VIO && mkdir build && cd build && cmake .. && make -j1
-CMD cd /
+RUN cd Kimera-VIO && mkdir build && cd build && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash &&\ 
+                    cmake -DCMAKE_INSTALL_PREFIX=/opt/ros/${ROS_DISTRO} .. && make -j4 "
