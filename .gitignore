@@ -29,3 +29,4 @@
 
 % Ignore python bytecode
 *.pyc
+.zsh_history
