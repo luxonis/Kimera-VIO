@@ -8,8 +8,8 @@
 *.autosave
 
 % Ignore VS code settings
-*.vscode
-
+# .vscode
+settings.json
 % Ignore logged mesh ply
 *.ply
 
