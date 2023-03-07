@@ -79,16 +79,17 @@ dai::Pipeline createPipeline(VIO::VioParams params,
     leftCam->setStreamName("left-in");
     rightCam->setStreamName("right-in");
     std::string calib_path =
-        FLAGS_params_folder_path + "/" + calibration_file_name;
-    // dai::CalibrationHandler calibData(calib_path);
-    // pipeline.setCalibrationData(calibData);
+        FLAGS_rosbag_dataset_path + "/" + calibration_file_name;
+    std::cout << "Using calibration file: " << calib_path << std::endl;
+    dai::CalibrationHandler calibData(calib_path);
+    pipeline.setCalibrationData(calibData);
 
-    // std::vector<std::vector<float>> intrinsics;
-    // int width, height;
-    // std::cout << "Intrinsics from defaultIntrinsics function:" << std::endl;
-    // std::tie(intrinsics, width, height) =
-    //     calibData.getDefaultIntrinsics(dai::CameraBoardSocket::LEFT);
-    // printMatrix(intrinsics);  // Logging just to be sure.
+    std::vector<std::vector<float>> intrinsics;
+    int width, height;
+    std::cout << "Intrinsics from defaultIntrinsics function:" << std::endl;
+    std::tie(intrinsics, width, height) =
+        calibData.getDefaultIntrinsics(dai::CameraBoardSocket::LEFT);
+    printMatrix(intrinsics);  // Logging just to be sure.
   } else {
     monoLeft = pipeline.create<dai::node::MonoCamera>();
     monoRight = pipeline.create<dai::node::MonoCamera>();
@@ -367,10 +368,10 @@ int main(int argc, char* argv[]) {
                                           VIO::OAK3DFeatureDataProvider>(dataset_parser);
       dataset_handler = std::async(
         std::launch::async, &VIO::OAK3DFeatureDataProvider::spinInputRosBag, oak_feature_data_parser);
-      dataset_handler.get();
     }
     vio_pipeline->spinViz();
     is_pipeline_successful = !handle.get();
+    dataset_handler.get();
     handle_shutdown.get();
     handle_pipeline.get();
   } else {

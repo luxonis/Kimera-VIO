@@ -26,7 +26,9 @@ PARAMS_PATH="../params/OAK-D-mod"
 
 # Vocabulary path: specify where the vocabulary for loop closure is.
 VOCABULARY_PATH="../vocabulary"
-DATASET_PATH="/media/psf/luxonis/VIO-Data/vioslam_test_outside3"
+DATASET_PATH="/media/psf/luxonis/VIO-Data/vioslam_test_feb_28_2023"
+# DATASET_PATH=""
+CALIB_FILE_NAME="oaks2_calib_19443010F106F61200.json"
 # DATASET_PATH=""
 # Output path: specify where the output logs will be written.
 # (only used if LOG_OUTPUT is enabled)
@@ -48,6 +50,8 @@ else
             echo "Logging output!";;
         -b) BUILD_PATH=$2 #{OPTARG}
             echo "Changing Build path to -> ${BUILD_PATH}!";;
+      -calib) CALIB_FILE_NAME=$2 #{OPTARG}
+            echo "Changing calib json file -> ${CALIB_FILE_NAME}!";;
         -eod) USE_ONDEV=1
             echo "Using on device feature tracker!" ;;
       --)
@@ -80,10 +84,12 @@ echo """ Launching:
 # The flag --help will provide you with information about what each flag
 # does.
 # valgrind --tool=memcheck --vgdb=yes --vgdb-error=0 $BUILD_PATH/stereoVIO_OAKD \
+# gdb --args $BUILD_PATH/stereoVIO_OAKD \
 $BUILD_PATH/stereoVIO_OAKD \
   --params_folder_path="$PARAMS_PATH" \
   --use_lcd="$USE_LCD" \
   --rosbag_dataset_path="$DATASET_PATH" \
+  --calibration_file_name="$CALIB_FILE_NAME" \
   --vocabulary_path="$VOCABULARY_PATH/ORBvoc.yml" \
   --flagfile="$PARAMS_PATH/flags/stereoVIO_OAK.flags" \
   --flagfile="$PARAMS_PATH/flags/Mesher.flags" \
@@ -93,7 +99,7 @@ $BUILD_PATH/stereoVIO_OAKD \
   --logtostderr=1 \
   --colorlogtostderr=1 \
   --log_prefix=1 \
-  --v=4 \
+  --v=5 \
   --log_output="$LOG_OUTPUT" \
   --save_frontend_images=0 \
   --visualize_frontend_images=0 \

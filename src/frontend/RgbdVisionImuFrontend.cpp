@@ -13,6 +13,7 @@
  */
 
 #include <memory>
+#include <math.h>       /* isnan, sqrt */
 
 #include "kimera-vio/frontend/RgbdVisionImuFrontend-definitions.h"
 #include "kimera-vio/frontend/RgbdVisionImuFrontend.h"
@@ -242,6 +243,7 @@ void RgbdVisionImuFrontend::processFirstFrame(const RgbdFrame& first_frame) {
   // Undistort keypoints:
   stereo_camera_->undistortRectifyLeftKeypoints(rgbd_frame_k_->intensity_img_->keypoints_,
                                    &rgbd_frame_k_->intensity_img_->keypoints_undistorted_);
+  rgbd_frame_k_->calculate3dKeypoints();
 
   // camera_->undistortKeypoints(rgbd_frame_k_->intensity_img_->keypoints_,
   //                                  &rgbd_frame_k_->intensity_img_->keypoints_undistorted_);
@@ -359,6 +361,7 @@ StatusRgbdMeasurementsPtr RgbdVisionImuFrontend::processFrame(
       //                                &rgbd_frame_k_->intensity_img_->keypoints_undistorted_);
 
       rgbd_frame_k_->calculate3dKeypoints();
+      VLOG(4) << "Calculating 3D points  -> " << left_frame_k->getNrValidKeypoints();
       sparse_rgbd_time = utils::Timer::toc(start_time).count();
 
       TrackingStatusPose status_pose_rgbd;
@@ -573,10 +576,20 @@ void RgbdVisionImuFrontend::printStatusRgbdMeasurements(
                       "stereo");
   LOG(INFO) << " stereo points:";
   const RgbdMeasurements& rgbd_measurements = status_rgbd_measurements.second;
+  int countValid = 0, countInvalid = 0;
+
   for (const auto& meas : rgbd_measurements) {
     std::cout << " " << meas.second << " ";
+    if (std::isnan(meas.second.uR())){
+      countInvalid++;
+    }
+    else{
+      countValid++;
+    }
   }
   std::cout << std::endl;
+  LOG(INFO) << "StereoPoint2 Valid: " << countValid;
+  LOG(INFO) << "StereoPoint2 Invalid: " << countInvalid;
 } 
 
 /* -------------------------------------------------------------------------- */

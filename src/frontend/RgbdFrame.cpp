@@ -64,7 +64,7 @@ void RgbdFrame::calculate3dKeypoints(){
 
   CHECK(depth_img_->depth_img_.type() == CV_16UC1 ||
         depth_img_->depth_img_.type() == CV_32FC1);
-
+  int nr_valid_depth_points = 0;
   for (size_t i = 0; i < intensity_img_->versors_.size(); ++i) {
     if (intensity_img_->keypoints_undistorted_[i].first == 
           KeypointStatus::VALID) {
@@ -77,6 +77,7 @@ void RgbdFrame::calculate3dKeypoints(){
         // DepthMap is not the norm of the vector, it is the z component.
         uint16_t depth_val = depth_img_->depth_img_.at<uint16_t>(std::floor(index.y), std::floor(index.x));
         if (depth_val != 0){
+          nr_valid_depth_points++;
           if (depth_img_->depth_img_.type() == CV_16UC1) {
             keypoint_3d = versor * depth_val / (versor(2) * 1000);
           }
@@ -95,6 +96,7 @@ void RgbdFrame::calculate3dKeypoints(){
         keypoints_3d_.push_back(Vector3::Zero());
     }
   }
+  VLOG_IF(4, nr_valid_depth_points < 5) << "Number of valid depth points is " << nr_valid_depth_points;
 }
 
 void RgbdFrame::checkRgbdFrame() const{

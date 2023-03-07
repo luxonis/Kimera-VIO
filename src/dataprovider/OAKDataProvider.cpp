@@ -17,6 +17,7 @@
 #include <algorithm>  // for max
 #include <chrono>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <string>
 #include <thread>
@@ -50,6 +51,7 @@ OAKDataProvider::OAKDataProvider(const std::string& dataset_path, const VioParam
       left_image_fps_(0), 
       imu_msg_hz_(0),
       left_cam_info_(vio_params_.camera_params_.at(0)){
+       last_input_imu_timestamp_ = std::numeric_limits<int>::min();
     // storage_options
     if (!dataset_path_.empty()) {
         VLOG(2) << "Dataset path: " << dataset_path_;

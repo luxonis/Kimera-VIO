@@ -44,6 +44,19 @@ enum class KeypointStatus {
   FAILED_ARUN
 };
 
+constexpr const char* KeypointStatusToString(KeypointStatus status) throw()
+{
+    switch (status)
+    {
+        case KeypointStatus::VALID        : return "KeypointStatus::VALID";
+        case KeypointStatus::NO_LEFT_RECT : return "KeypointStatus::NO_LEFT_RECT";
+        case KeypointStatus::NO_RIGHT_RECT: return "KeypointStatus::NO_RIGHT_RECT";
+        case KeypointStatus::NO_DEPTH     : return "KeypointStatus::NO_DEPTH";
+        case KeypointStatus::FAILED_ARUN  : return "KeypointStatus::FAILED_ARUN";
+        default: throw std::invalid_argument("Unimplemented item");
+    }
+}
+ 
 using Depth = double;
 using Depths = std::vector<Depth>;
 
