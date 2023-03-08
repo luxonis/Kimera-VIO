@@ -246,7 +246,7 @@ target_link_libraries(stereoVIO_OAKD PUBLIC kimera_vio::kimera_vio
 
 ############################### TESTS ##########################################
 ### Add testing
-option(KIMERA_BUILD_TESTS "Build tests" ON)
+option(KIMERA_BUILD_TESTS "Build tests" OFF)
 if(KIMERA_BUILD_TESTS)
   # Download and unpack googletest at configure time
   # TODO Consider doing the same for glog, gflags, although it might
