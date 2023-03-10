@@ -11,69 +11,61 @@ ENV DIRPATH /home/
 WORKDIR $DIRPATH
 
 #Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
-RUN apt-get update && apt-get install -y git cmake build-essential pkg-config
+RUN apt-get update && apt-get install -y --no-install-recommends \
+                                          apt-utils cmake build-essential unzip pkg-config \
+                                          libjpeg-dev libpng-dev libtiff-dev \
+                                          libvtk9-dev \
+                                          libgtk-3-dev \
+                                          libparmetis-dev \
+                                          libatlas-base-dev gfortran
+
 RUN apt-get update && apt-get install -y --no-install-recommends ros-humble-desktop-full=0.10.0-1* 
 
 # Install xvfb to provide a display to container for GUI realted testing.
 RUN apt-get update && apt-get install -y xvfb
-
-# Install OpenCV for Ubuntu 18.04
-RUN apt-get update && apt-get install -y \
-      unzip \
-      libjpeg-dev libpng-dev libtiff-dev \
-      libvtk9-dev \
-      libgtk-3-dev \
-      libatlas-base-dev gfortran
-
+# libtbb-dev
 
 # Install GTSAM
-RUN apt-get update && apt-get install -y libboost-all-dev libtbb-dev libopencv-dev libc6-dbg gdb valgrind  
+RUN apt-get update && apt-get install -y libboost-all-dev libopencv-dev libc++-15-dev libc6 libc6-dbg gdb valgrind software-properties-common
 # ADD https://api.github.com/repos/borglab/gtsam/git/refs/heads/master version.json
 RUN git clone https://github.com/borglab/gtsam.git
 RUN cd gtsam && \
     git fetch && \
     git checkout af6a4f2417af4f537fe8ce43c471781267776b6c && \
-    mkdir build && \
-    cd build && \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DGTSAM_BUILD_TESTS=OFF -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF -DCMAKE_BUILD_TYPE=Release -DGTSAM_BUILD_UNSTABLE=ON -DGTSAM_POSE3_EXPMAP=ON -DGTSAM_ROT3_EXPMAP=ON -DGTSAM_TANGENT_PREINTEGRATION=OFF .. && \
-    make -j$(nproc) install
+    cmake -S. -Bbuild -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGTSAM_USE_SYSTEM_EIGEN=OFF -DGTSAM_POSE3_EXPMAP=ON -DGTSAM_ROT3_EXPMAP=ON -DGTSAM_TANGENT_PREINTEGRATION=OFF -DGTSAM_BUILD_TYPE_POSTFIXES=OFF -DGTSAM_WITH_TBB=OFF  && \
+    cmake --build build --target install
+  
+#   mkdir build && \
+#     cd build && \
+  
+#     make -j$(nproc) install
 
 # Install Open_GV
 RUN git clone https://github.com/laurentkneip/opengv
-RUN cd opengv && \
-      mkdir build
-RUN cd opengv/build && \
-      cmake -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local \
+RUN cd opengv &&\
+      cmake -S. -Bbuild \
       -DEIGEN_INCLUDE_DIRS=$DIRPATH/gtsam/gtsam/3rdparty/Eigen \
-      -DEIGEN_INCLUDE_DIR=$DIRPATH/gtsam/gtsam/3rdparty/Eigen .. && \
-      make -j$(nproc) install
+      -DEIGEN_INCLUDE_DIR=$DIRPATH/gtsam/gtsam/3rdparty/Eigen -DCMAKE_BUILD_TYPE=RelWithDebInfo && \
+      cmake --build build --target install
 
 # Install DBoW2
 RUN git clone https://github.com/dorian3d/DBoW2.git
 RUN cd DBoW2 && \
-      mkdir build && \
-      cd build && \
-      cmake .. && \
-      make -j$(nproc) install
+      cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo &&\
+      cmake --build build --target install
 
 # Install RobustPGO
 # ADD https://api.github.com/repos/MIT-SPARK/Kimera-RPGO/git/refs/heads/master version.json
 RUN git clone https://github.com/MIT-SPARK/Kimera-RPGO.git
 RUN cd Kimera-RPGO && \
-      mkdir build && \
-      cd build && \
-      cmake .. && \
-      make -j$(nproc)
+      cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo &&\
+      cmake --build build --target install
 
-RUN apt-get update && \
-    apt-get install software-properties-common -y
 # Get python3
 RUN apt-get update && \
     add-apt-repository ppa:deadsnakes/ppa
 RUN apt-get update && \
-    apt-get install -y python3.10-dev python3-pip python3-tk python3-pyqt5
+    apt-get install -y python3-dev python3-pip python3-tk python3-pyqt5
 
 # python3.10 
 # RUN pip install --upgrade pip
@@ -98,28 +90,21 @@ RUN apt-get update && apt-get install -y libgflags2.2 libgflags-dev libgoogle-gl
 
 # Install Pangolin
 RUN apt-get update && apt-get install -y libgl1-mesa-dev libglew-dev wget
-RUN git clone https://github.com/stevenlovegrove/Pangolin.git
-RUN cd Pangolin && \
-      mkdir build && \
-      cd build && \
-      cmake .. && \
-      make -j$(nproc)
+# RUN git clone https://github.com/stevenlovegrove/Pangolin.git
+# RUN cd Pangolin && \
+#       mkdir build && \
+#       cd build && \
+#       cmake .. && \
+#       make -j$(nproc)
 
-# Add credentials on build
-ARG SSH_PRIVATE_KEY
-RUN mkdir /root/.ssh/
-RUN echo "${SSH_PRIVATE_KEY}" > /root/.ssh/id_rsa
-RUN chmod 600 ~/.ssh/id_rsa
-
-# Make sure your domain is accepted
-RUN touch /root/.ssh/known_hosts
-RUN ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts
 
 # install depthai
 RUN git clone --recursive https://github.com/luxonis/depthai-core.git --branch develop
-RUN cmake -Hdepthai-core -Bdepthai-core/build -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local
+RUN cmake -Hdepthai-core -Bdepthai-core/build -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=RelWithDebInfo
 RUN cmake --build depthai-core/build --target install --parallel 4
 
+
+## -------------------------------------- ZSH setup -----------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends libusb-1.0-0-dev \
     zsh curl fzf vim && rm -rf /var/lib/apt/lists/*
 
@@ -144,8 +129,8 @@ RUN echo 'source /opt/ros/$ROS_DISTRO/setup.zsh' >> $HOME/.zshrc
 
 RUN mkdir Kimera-VIO
 COPY ./ $DIRPATH/Kimera-VIO
-RUN cd Kimera-VIO && mkdir build && cd build && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash &&\ 
-                    cmake -DCMAKE_INSTALL_PREFIX=/opt/ros/${ROS_DISTRO} .. && make -j4 "
+RUN cd Kimera-VIO && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash &&\ 
+                    cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build "
 
 
 WORKDIR /home
